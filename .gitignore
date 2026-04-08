@@ -1,0 +1,41 @@
+# ------------------------------
+# Terraform (all environments/clouds)
+# ------------------------------
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Terraform plan artifacts
+*.tfplan
+*.plan
+
+# Lock file policy:
+# Keep .terraform.lock.hcl committed for reproducible providers.
+# Uncomment the next line only if you intentionally do not version it.
+# .terraform.lock.hcl
+
+# ------------------------------
+# Sensitive env files
+# ------------------------------
+.env
+.env.*
+*.pem
+*.key
+
+# ------------------------------
+# Editor / OS
+# ------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
