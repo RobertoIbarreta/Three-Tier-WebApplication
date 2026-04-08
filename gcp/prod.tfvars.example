@@ -1,0 +1,37 @@
+# ---------- Global ----------
+project_name = "three-tier-webapp"
+environment  = "prod"
+gcp_project  = "your-gcp-project-id"
+gcp_region   = "us-central1"
+
+# ---------- Networking ----------
+vpc_name                 = "three-tier-vpc"
+subnet_public_cidr       = "10.20.1.0/24"
+subnet_private_app_cidr  = "10.20.11.0/24"
+subnet_private_db_cidr   = "10.20.21.0/24"
+
+# ---------- Compute / App Tier ----------
+machine_type             = "e2-micro"
+app_port                 = 8080
+mig_min_replicas         = 2
+mig_max_replicas         = 4
+mig_target_cpu_util      = 0.6
+
+# ---------- Load Balancer ----------
+health_check_path        = "/health"
+lb_enable_https          = false
+
+# ---------- Database Tier (Cloud SQL) ----------
+db_version               = "MYSQL_8_0"
+db_tier                  = "db-f1-micro"
+db_name                  = "appdb"
+db_username              = "app_user"
+db_port                  = 3306
+db_disk_size_gb          = 20
+db_availability_type     = "REGIONAL"
+db_deletion_protection   = true
+
+# IMPORTANT:
+# - Do NOT put real secrets in this file.
+# - Keep sensitive values (e.g., db_password) in ignored local tfvars
+#   or Secret Manager integration.

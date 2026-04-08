@@ -1,17 +1,34 @@
-# ------------------------------
-# Terraform (all environments/clouds)
-# ------------------------------
-**/.terraform/*
+# Local .terraform directories
+.terraform/
+**/.terraform/
+
+# Terraform state files
 *.tfstate
 *.tfstate.*
+
+# Crash logs
 crash.log
 crash.*.log
+
+# Ignore all Terraform variable files (often secrets), keep examples
 *.tfvars
+*.tfvars.json
+*.auto.tfvars
+*.auto.tfvars.json
 !*.tfvars.example
+!*.auto.tfvars.example
+
+# Explicit local env files for this repo layout
+aws/*.tfvars
+gcp/*.tfvars
+
+# Override files
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+
+# CLI config files
 .terraformrc
 terraform.rc
 
@@ -19,23 +36,6 @@ terraform.rc
 *.tfplan
 *.plan
 
-# Lock file policy:
-# Keep .terraform.lock.hcl committed for reproducible providers.
-# Uncomment the next line only if you intentionally do not version it.
+# Keep lock file committed by default (recommended).
+# Uncomment ONLY if your team policy is to not commit provider locks.
 # .terraform.lock.hcl
-
-# ------------------------------
-# Sensitive env files
-# ------------------------------
-.env
-.env.*
-*.pem
-*.key
-
-# ------------------------------
-# Editor / OS
-# ------------------------------
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
