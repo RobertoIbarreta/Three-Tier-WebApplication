@@ -1,0 +1,37 @@
+# Copy to prod.tfvars (gitignored). Do not commit secrets.
+# terraform plan -var-file=environments/prod/prod.tfvars
+
+# ---------- Global ----------
+project_name = "three-tier-webapp"
+environment  = "prod"
+aws_region   = "us-east-1"
+
+# ---------- Networking ----------
+vpc_cidr             = "10.30.0.0/16"
+public_subnet_cidrs  = ["10.30.1.0/24", "10.30.2.0/24"]
+private_app_subnets  = ["10.30.11.0/24", "10.30.12.0/24"]
+private_db_subnets   = ["10.30.21.0/24", "10.30.22.0/24"]
+availability_zones   = ["us-east-1a", "us-east-1b"]
+
+# ---------- Compute / App Tier ----------
+instance_type        = "t3.micro"
+app_port             = 8080
+asg_min_size         = 2
+asg_desired_capacity = 2
+asg_max_size         = 4
+
+# ---------- Load Balancer ----------
+alb_ingress_cidrs = ["0.0.0.0/0"]
+health_check_path = "/health"
+
+# ---------- Database Tier ----------
+db_engine              = "mysql"
+db_engine_version      = "8.0"
+db_instance_class      = "db.t3.micro"
+db_allocated_storage   = 20
+db_name                = "appdb"
+db_username            = "app_user"
+db_port                = 3306
+db_backup_retention    = 7
+db_multi_az            = true
+db_publicly_accessible = false
