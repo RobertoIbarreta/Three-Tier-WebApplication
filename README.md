@@ -120,6 +120,28 @@ Copy each `*.tfvars.example` to a matching `*.tfvars` in the same folder and set
 
 The main module still has **no application resources** in `main.tf` yet; remote state is ready for when you add them.
 
+## Scaffold Validation Status
+
+Readiness checks were completed for `dev` before starting network/app/db implementation.
+
+- **Backend lock acquisition (DynamoDB):** Passed  
+  Confirmed via Terraform output showing `Acquiring state lock` and `Releasing state lock` during plan/apply operations.
+- **State object written to expected S3 key:** Passed  
+  Verified object exists at `envs/dev/terraform.tfstate` in the remote state bucket.
+- **Provider versions pinned and reproducible:** Passed  
+  `aws/versions.tf` constrains AWS provider (`~> 5.0`) and `aws/.terraform.lock.hcl` pins exact provider checksums/version for teammate consistency.
+- **Example tfvars present and non-sensitive:** Passed  
+  `dev/stage/prod` `*.tfvars.example` files exist and contain sample placeholders (no secrets committed).
+
+Validation commands used:
+
+```powershell
+cd aws
+terraform init -backend-config=environments/dev/backend.hcl -reconfigure
+terraform plan -var-file=environments/dev/dev.tfvars -lock-timeout=60s
+terraform apply -refresh-only -auto-approve -var-file=environments/dev/dev.tfvars
+```
+
 ## GCP
 
 The `gcp/` directory currently holds **example variable values** only. A full Terraform root (providers, backend, modules) can be added later to mirror the AWS structure.

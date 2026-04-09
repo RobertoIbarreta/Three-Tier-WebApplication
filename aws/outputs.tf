@@ -17,3 +17,8 @@ output "common_tags" {
   description = "Default tags applied via provider default_tags (Project, Environment, ManagedBy, Owner)."
   value       = local.common_tags
 }
+
+output "vpc_id" {
+  description = "ID of the main VPC."
+  value       = aws_vpc.main.id
+}
