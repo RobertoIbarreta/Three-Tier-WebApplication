@@ -22,6 +22,7 @@ crash.*.log
 aws/*.tfvars
 aws/bootstrap/*.tfvars
 aws/environments/*/*.tfvars
+aws/environments/*/backend.hcl
 gcp/*.tfvars
 
 # Override files

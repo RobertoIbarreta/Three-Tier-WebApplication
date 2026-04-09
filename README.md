@@ -6,8 +6,8 @@ Infrastructure-as-code for a **three-tier** web application on **AWS** (primary 
 
 | Area | Status |
 |------|--------|
-| **AWS root module** (`aws/`) | Core Terraform files: provider, variables, locals (naming/tags), outputs, empty `main.tf` ready for modules |
-| **AWS environments** | `dev`, `stage`, `prod` via per-environment `*.tfvars.example` files (non-overlapping VPC CIDRs when sharing one account) |
+| **AWS root module** (`aws/`) | Core Terraform files; **partial S3 backend** (configure at `terraform init` via `backend.hcl` per environment) |
+| **AWS environments** | `dev` / `stage` / `prod`: `*.tfvars.example` + `backend.hcl.example` (separate state **key** per env: `envs/<env>/terraform.tfstate`) |
 | **AWS bootstrap** (`aws/bootstrap/`) | Dedicated stack that creates **S3** (remote state) + **DynamoDB** (state locking) |
 | **AWS modules** (`aws/modules/`) | Placeholder folders: `network`, `security`, `app`, `db` (to be implemented) |
 | **GCP** (`gcp/`) | Example `prod.tfvars.example` only; no full Terraform root yet |
@@ -29,9 +29,9 @@ Three-Tier-WebApplication/
 │   ├── locals.tf             # name_prefix + common_tags
 │   ├── outputs.tf
 │   ├── environments/
-│   │   ├── dev/dev.tfvars.example
-│   │   ├── stage/stage.tfvars.example
-│   │   └── prod/prod.tfvars.example
+│   │   ├── dev/   (dev.tfvars.example, backend.hcl.example)
+│   │   ├── stage/ (stage.tfvars.example, backend.hcl.example)
+│   │   └── prod/  (prod.tfvars.example, backend.hcl.example)
 │   ├── modules/              # network, security, app, db (stubs)
 │   └── bootstrap/          # One-time (per account/region) state backend
 │       ├── main.tf           # S3 bucket + DynamoDB lock table
@@ -52,8 +52,8 @@ Three-Tier-WebApplication/
 
 ## Secrets and Git
 
-- **Do not commit** real `*.tfvars` files; they are **gitignored**.
-- **Do commit** `*.tfvars.example` files as templates.
+- **Do not commit** real `*.tfvars` or per-environment **`backend.hcl`** (account-specific bucket/table); they are **gitignored**.
+- **Do commit** `*.tfvars.example` and `backend.hcl.example` as templates.
 - Keep **`.terraform.lock.hcl`** committed for reproducible provider versions (under `aws/` and `aws/bootstrap/`).
 
 ## Prerequisites
@@ -74,11 +74,34 @@ Bootstrap uses **local state** by default so you are not depending on the bucket
 1. `cd aws/bootstrap`
 2. Copy `terraform.tfvars.example` to `terraform.tfvars` (ignored by git) and set `state_bucket_name` to a **unique** name.
 3. Run `terraform init`, `terraform plan`, `terraform apply`.
-4. Note the outputs (`state_bucket_name`, `dynamodb_table_name`, `aws_region`, `backend_config_hint`) for wiring the **main** `aws/` backend (next step in your roadmap).
+4. Note the outputs (`state_bucket_name`, `dynamodb_table_name`, `aws_region`, `backend_config_hint`) for wiring the **main** `aws/` backend.
 
-## AWS: Main Stack (Current Usage)
+## AWS: Main Stack — Remote State (S3 + DynamoDB)
 
-The main module has **no resources** in `main.tf` yet; you can still validate configuration:
+The main stack uses a **partial** `backend "s3" {}` in [`aws/versions.tf`](aws/versions.tf). Terraform does not allow variables inside `backend` blocks, so **bucket, key, region, DynamoDB table, and encryption** are supplied at init time.
+
+Per environment, copy `environments/<env>/backend.hcl.example` → `backend.hcl` and set:
+
+- **`bucket`** — bootstrap output `state_bucket_name`
+- **`key`** — `envs/dev/terraform.tfstate`, `envs/stage/terraform.tfstate`, or `envs/prod/terraform.tfstate` (one object per environment)
+- **`region`** — same region as the bucket
+- **`dynamodb_table`** — bootstrap output `dynamodb_table_name`
+- **`encrypt`** — `true` (SSE for state in S3)
+
+Initialize (pick **one** environment per working copy, or re-init with `-reconfigure` when switching):
+
+```powershell
+cd aws
+terraform init -backend-config=environments/prod/backend.hcl
+```
+
+If you previously used **local** state in `aws/` and want to **upload** it to S3, use:
+
+```powershell
+terraform init -backend-config=environments/prod/backend.hcl -migrate-state
+```
+
+Validate without configuring the backend (CI or quick checks):
 
 ```powershell
 cd aws
@@ -86,14 +109,16 @@ terraform init -backend=false
 terraform validate
 ```
 
-When you add modules and optional **S3 backend** to `aws/`, plan and apply per environment, for example:
+Plan and apply (after init **with** the correct backend for that environment):
 
 ```powershell
 cd aws
-terraform plan -var-file=environments/dev/dev.tfvars
+terraform plan -var-file=environments/prod/prod.tfvars
 ```
 
 Copy each `*.tfvars.example` to a matching `*.tfvars` in the same folder and set `owner` and other values locally.
+
+The main module still has **no application resources** in `main.tf` yet; remote state is ready for when you add them.
 
 ## GCP
 
@@ -101,9 +126,9 @@ The `gcp/` directory currently holds **example variable values** only. A full Te
 
 ## Roadmap (Typical Next Steps)
 
-1. Add `backend "s3" { ... }` to the main `aws/` stack using bootstrap outputs; use a **different state `key` per environment** (e.g. `envs/dev/terraform.tfstate`).
-2. Implement `aws/modules/network` (VPC, subnets, routing, NAT).
-3. Add security groups, RDS, app tier (launch template + ASG), ALB, and outputs.
+1. Implement `aws/modules/network` (VPC, subnets, routing, NAT).
+2. Add security groups, RDS, app tier (launch template + ASG), ALB, and outputs.
+3. Wire CI/CD to run `terraform plan` per environment with the matching `backend.hcl` and `*.tfvars`.
 
 ## License
 

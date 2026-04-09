@@ -1,0 +1,9 @@
+# Copy to backend.hcl (gitignored). Fill values from aws/bootstrap outputs after apply.
+# From aws/: terraform init -backend-config=environments/dev/backend.hcl
+# Re-init with -reconfigure if you switch environments or bucket/table.
+
+bucket         = "REPLACE_WITH_BOOTSTRAP_STATE_BUCKET_NAME"
+key            = "envs/dev/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "terraform-state-locks"
+encrypt        = true
