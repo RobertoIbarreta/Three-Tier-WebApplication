@@ -1,16 +1,34 @@
 # ---------- Global ----------
+# Naming: resource names and Name tags should follow
+#   <project>-<environment>-<component>
+# (see locals.name_prefix; append a hyphen and component slug per resource.)
 variable "project_name" {
   type        = string
-  description = "Short project identifier used in resource names."
+  description = "Project slug for names and tags; prefer lowercase letters, digits, hyphens (e.g. three-tier-webapp)."
+
+  validation {
+    condition     = can(regex("^[a-z0-9-]+$", var.project_name))
+    error_message = "project_name must be lowercase alphanumeric with hyphens only."
+  }
 }
 
 variable "environment" {
   type        = string
-  description = "Deployment environment (dev, stage, prod)."
+  description = "Deployment environment (dev, stage, prod); second segment in <project>-<env>-<component> names."
 
   validation {
     condition     = contains(["dev", "stage", "prod"], var.environment)
     error_message = "environment must be dev, stage, or prod."
+  }
+}
+
+variable "owner" {
+  type        = string
+  description = "Owning team or contact for required tag Owner (e.g. team-platform, email alias, or internal ID)."
+
+  validation {
+    condition     = length(trimspace(var.owner)) > 0
+    error_message = "owner must be a non-empty string."
   }
 }
 

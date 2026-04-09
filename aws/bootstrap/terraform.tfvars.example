@@ -1,0 +1,16 @@
+# Copy to terraform.tfvars (gitignored). Bucket name must be globally unique.
+# Run from aws/bootstrap/: terraform init && terraform plan && terraform apply
+
+aws_region = "us-east-1"
+
+# Must be globally unique across all AWS accounts.
+state_bucket_name = "your-org-terraform-state-us-east-1-REPLACE"
+
+# Unique within this account + region (e.g. one table shared with key prefixes per env).
+dynamodb_table_name = "terraform-state-locks"
+
+tags = {
+  Project   = "three-tier-webapp"
+  ManagedBy = "Terraform"
+  Owner     = "your-team-or-contact"
+}

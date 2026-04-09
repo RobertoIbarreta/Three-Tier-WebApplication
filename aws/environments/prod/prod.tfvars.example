@@ -4,6 +4,7 @@
 # ---------- Global ----------
 project_name = "three-tier-webapp"
 environment  = "prod"
+owner        = "your-team-or-contact"
 aws_region   = "us-east-1"
 
 # ---------- Networking ----------

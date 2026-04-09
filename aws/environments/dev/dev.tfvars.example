@@ -4,6 +4,7 @@
 # ---------- Global ----------
 project_name = "three-tier-webapp"
 environment  = "dev"
+owner        = "your-team-or-contact"
 aws_region   = "us-east-1"
 
 # ---------- Networking (non-overlapping CIDRs per env in same account) ----------

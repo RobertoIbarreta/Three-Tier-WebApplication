@@ -9,6 +9,11 @@ output "aws_region" {
 }
 
 output "name_prefix" {
-  description = "Computed name prefix for resources (project-environment)."
+  description = "Prefix for <project>-<environment>-<component> naming; append -<component> per resource."
   value       = local.name_prefix
+}
+
+output "common_tags" {
+  description = "Default tags applied via provider default_tags (Project, Environment, ManagedBy, Owner)."
+  value       = local.common_tags
 }
