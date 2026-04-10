@@ -165,3 +165,147 @@ resource "aws_route_table_association" "private_db" {
   subnet_id      = each.value.id
   route_table_id = aws_route_table.private_db[each.key].id
 }
+
+resource "aws_security_group" "alb" {
+  name        = "${local.name_prefix}-alb-sg"
+  description = "ALB security group allowing public HTTP/HTTPS."
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "Allow HTTP from internet"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Allow HTTPS from internet"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  dynamic "ingress" {
+    for_each = aws_vpc.main.ipv6_cidr_block != null ? [1] : []
+    content {
+      description      = "Allow HTTP from internet (IPv6)"
+      from_port        = 80
+      to_port          = 80
+      protocol         = "tcp"
+      ipv6_cidr_blocks = ["::/0"]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = aws_vpc.main.ipv6_cidr_block != null ? [1] : []
+    content {
+      description      = "Allow HTTPS from internet (IPv6)"
+      from_port        = 443
+      to_port          = 443
+      protocol         = "tcp"
+      ipv6_cidr_blocks = ["::/0"]
+    }
+  }
+
+  egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  dynamic "egress" {
+    for_each = aws_vpc.main.ipv6_cidr_block != null ? [1] : []
+    content {
+      description      = "Allow all outbound traffic (IPv6)"
+      from_port        = 0
+      to_port          = 0
+      protocol         = "-1"
+      ipv6_cidr_blocks = ["::/0"]
+    }
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-alb-sg"
+    Tier = "public"
+  }
+}
+
+resource "aws_security_group" "app" {
+  name        = "${local.name_prefix}-app-sg"
+  description = "Application security group allowing traffic only from ALB."
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "Allow app traffic from ALB security group"
+    from_port       = var.app_port
+    to_port         = var.app_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  dynamic "egress" {
+    for_each = aws_vpc.main.ipv6_cidr_block != null ? [1] : []
+    content {
+      description      = "Allow all outbound traffic (IPv6)"
+      from_port        = 0
+      to_port          = 0
+      protocol         = "-1"
+      ipv6_cidr_blocks = ["::/0"]
+    }
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-app-sg"
+    Tier = "app"
+  }
+}
+
+resource "aws_security_group" "db" {
+  name        = "${local.name_prefix}-db-sg"
+  description = "Database security group allowing traffic only from app tier."
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "Allow DB traffic from app security group"
+    from_port       = var.db_port
+    to_port         = var.db_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app.id]
+  }
+
+  egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  dynamic "egress" {
+    for_each = aws_vpc.main.ipv6_cidr_block != null ? [1] : []
+    content {
+      description      = "Allow all outbound traffic (IPv6)"
+      from_port        = 0
+      to_port          = 0
+      protocol         = "-1"
+      ipv6_cidr_blocks = ["::/0"]
+    }
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-db-sg"
+    Tier = "db"
+  }
+}
