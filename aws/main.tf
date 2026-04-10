@@ -8,7 +8,192 @@ resource "aws_vpc" "main" {
   }
 }
 
+data "aws_ssm_parameter" "al2_ami_id" {
+  name = "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+}
+
+resource "aws_iam_role" "app_ec2" {
+  name = "${local.name_prefix}-app-ec2-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Name = "${local.name_prefix}-app-ec2-role"
+    Tier = "app"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "app_ec2_ssm_core" {
+  role       = aws_iam_role.app_ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "app_ec2" {
+  name = "${local.name_prefix}-app-ec2-profile"
+  role = aws_iam_role.app_ec2.name
+}
+
+resource "aws_launch_template" "app" {
+  name_prefix   = "${local.name_prefix}-app-lt-"
+  image_id      = data.aws_ssm_parameter.al2_ami_id.value
+  instance_type = var.instance_type
+
+  iam_instance_profile {
+    name = aws_iam_instance_profile.app_ec2.name
+  }
+
+  vpc_security_group_ids = [aws_security_group.app.id]
+
+  user_data = base64encode(<<-EOT
+    #!/bin/bash
+    set -euxo pipefail
+
+    cat >/etc/profile.d/app_env.sh <<'EOF'
+    export APP_PORT="${var.app_port}"
+    export HEALTH_ENDPOINT="${local.app_health_check_path}"
+    EOF
+    chmod 644 /etc/profile.d/app_env.sh
+
+    mkdir -p /opt/app
+    cat >/opt/app/app.env <<'EOF'
+    APP_PORT=${var.app_port}
+    HEALTH_ENDPOINT=${local.app_health_check_path}
+    EOF
+    chmod 600 /opt/app/app.env
+
+  EOT
+  )
+
+  network_interfaces {
+    associate_public_ip_address = false
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name = "${local.name_prefix}-app"
+      Tier = "app"
+    }
+  }
+
+  tag_specifications {
+    resource_type = "volume"
+    tags = {
+      Name = "${local.name_prefix}-app-volume"
+      Tier = "app"
+    }
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-app-lt"
+    Tier = "app"
+  }
+}
+
+resource "aws_lb" "app" {
+  name               = "${local.name_prefix}-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = values(aws_subnet.public)[*].id
+
+  tags = {
+    Name = "${local.name_prefix}-alb"
+    Tier = "public"
+  }
+}
+
+resource "aws_lb_target_group" "app" {
+  name        = "${local.name_prefix}-app-tg"
+  port        = var.app_port
+  protocol    = "HTTP"
+  target_type = "instance"
+  vpc_id      = aws_vpc.main.id
+
+  health_check {
+    enabled             = true
+    path                = local.app_health_check_path
+    protocol            = "HTTP"
+    matcher             = "200-399"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-app-tg"
+    Tier = "app"
+  }
+}
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.app.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
+  }
+}
+
+resource "aws_autoscaling_group" "app" {
+  name             = "${local.name_prefix}-app-asg"
+  min_size         = var.asg_min_size
+  desired_capacity = var.asg_desired_capacity
+  max_size         = var.asg_max_size
+
+  vpc_zone_identifier = values(aws_subnet.private_app)[*].id
+  target_group_arns   = [aws_lb_target_group.app.arn]
+  health_check_type   = "ELB"
+
+  launch_template {
+    id      = aws_launch_template.app.id
+    version = "$Latest"
+  }
+
+  tag {
+    key                 = "Name"
+    value               = "${local.name_prefix}-app"
+    propagate_at_launch = true
+  }
+
+  tag {
+    key                 = "Tier"
+    value               = "app"
+    propagate_at_launch = true
+  }
+}
+
+resource "aws_autoscaling_policy" "app_alb_request_count" {
+  name                   = "${local.name_prefix}-app-alb-req-target"
+  autoscaling_group_name = aws_autoscaling_group.app.name
+  policy_type            = "TargetTrackingScaling"
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ALBRequestCountPerTarget"
+      resource_label         = "${aws_lb.app.arn_suffix}/${aws_lb_target_group.app.arn_suffix}"
+    }
+    target_value = 100
+  }
+}
+
 locals {
+  app_health_check_path = var.health_check_path
+
   public_subnet_map = {
     for idx, cidr in var.public_subnet_cidrs : idx => {
       cidr = cidr

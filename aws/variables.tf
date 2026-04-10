@@ -74,6 +74,19 @@ variable "app_port" {
   description = "Application listen port for target group and security rules."
 }
 
+variable "app_health_check_path" {
+  type        = string
+  description = "Application health endpoint path used by bootstrap/app config. If null, falls back to health_check_path."
+  default     = null
+  nullable    = true
+}
+
+variable "app_bootstrap_extra_commands" {
+  type        = string
+  description = "Optional extra shell commands appended to launch-template user data bootstrap."
+  default     = ""
+}
+
 variable "asg_min_size" {
   type        = number
   description = "Auto Scaling Group minimum capacity."
@@ -87,6 +100,12 @@ variable "asg_desired_capacity" {
 variable "asg_max_size" {
   type        = number
   description = "Auto Scaling Group maximum capacity."
+}
+
+variable "asg_target_requests_per_target" {
+  type        = number
+  description = "Target ALB requests per target for ASG target tracking."
+  default     = 100
 }
 
 # ---------- Load Balancer ----------

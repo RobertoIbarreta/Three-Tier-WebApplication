@@ -92,3 +92,63 @@ output "db_publicly_accessible" {
   description = "Whether the DB instance is publicly accessible."
   value       = aws_db_instance.main.publicly_accessible
 }
+
+output "app_ec2_role_name" {
+  description = "IAM role name used by app EC2 instances."
+  value       = aws_iam_role.app_ec2.name
+}
+
+output "app_ec2_role_arn" {
+  description = "IAM role ARN used by app EC2 instances."
+  value       = aws_iam_role.app_ec2.arn
+}
+
+output "app_ec2_instance_profile_name" {
+  description = "IAM instance profile name used by app EC2 instances."
+  value       = aws_iam_instance_profile.app_ec2.name
+}
+
+output "app_ec2_instance_profile_arn" {
+  description = "IAM instance profile ARN used by app EC2 instances."
+  value       = aws_iam_instance_profile.app_ec2.arn
+}
+
+output "app_launch_template_id" {
+  description = "ID of the application launch template."
+  value       = aws_launch_template.app.id
+}
+
+output "app_launch_template_latest_version" {
+  description = "Latest version number of the application launch template."
+  value       = aws_launch_template.app.latest_version
+}
+
+output "app_launch_template_ami_id" {
+  description = "Resolved AMI ID used by the application launch template."
+  value       = data.aws_ssm_parameter.al2_ami_id.value
+}
+
+output "alb_dns_name" {
+  description = "DNS name of the application load balancer."
+  value       = aws_lb.app.dns_name
+}
+
+output "alb_arn" {
+  description = "ARN of the application load balancer."
+  value       = aws_lb.app.arn
+}
+
+output "app_target_group_arn" {
+  description = "ARN of the application target group."
+  value       = aws_lb_target_group.app.arn
+}
+
+output "app_asg_name" {
+  description = "Name of the application Auto Scaling Group."
+  value       = aws_autoscaling_group.app.name
+}
+
+output "app_scaling_policy_arn" {
+  description = "ARN of the ASG target tracking scaling policy."
+  value       = aws_autoscaling_policy.app_alb_request_count.arn
+}
