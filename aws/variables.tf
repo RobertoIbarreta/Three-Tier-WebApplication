@@ -119,6 +119,17 @@ variable "health_check_path" {
   description = "HTTP path for ALB target group health checks."
 }
 
+variable "acm_certificate_arn" {
+  type        = string
+  description = "Existing ACM certificate ARN for ALB HTTPS listener."
+}
+
+variable "enable_http_to_https_redirect" {
+  type        = bool
+  description = "Whether HTTP listener redirects traffic to HTTPS."
+  default     = true
+}
+
 # ---------- Database Tier ----------
 variable "db_engine" {
   type        = string

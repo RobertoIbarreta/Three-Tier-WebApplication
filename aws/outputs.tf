@@ -152,3 +152,13 @@ output "app_scaling_policy_arn" {
   description = "ARN of the ASG target tracking scaling policy."
   value       = aws_autoscaling_policy.app_alb_request_count.arn
 }
+
+output "alb_https_listener_arn" {
+  description = "ARN of the HTTPS listener for the application load balancer."
+  value       = aws_lb_listener.https.arn
+}
+
+output "alb_https_endpoint" {
+  description = "Convenience HTTPS endpoint URL for the application load balancer."
+  value       = "https://${aws_lb.app.dns_name}"
+}

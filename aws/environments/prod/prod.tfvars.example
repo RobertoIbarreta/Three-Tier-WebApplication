@@ -28,6 +28,8 @@ asg_max_size         = 4
 # ---------- Load Balancer ----------
 alb_ingress_cidrs = ["0.0.0.0/0"]
 health_check_path = "/health"
+acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/your-real-cert-id"
+enable_http_to_https_redirect = true
 
 # ---------- Database Tier ----------
 db_engine              = "mysql"
