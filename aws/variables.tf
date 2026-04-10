@@ -130,6 +130,38 @@ variable "enable_http_to_https_redirect" {
   default     = true
 }
 
+variable "frontend_domain_name" {
+  type        = string
+  description = "Optional custom domain name for the CloudFront distribution frontend."
+  default     = null
+  nullable    = true
+}
+
+variable "frontend_acm_certificate_arn" {
+  type        = string
+  description = "Optional ACM certificate ARN in us-east-1 for CloudFront custom domain."
+  default     = null
+  nullable    = true
+}
+
+variable "frontend_index_document" {
+  type        = string
+  description = "Default index document for frontend static hosting."
+  default     = "index.html"
+}
+
+variable "frontend_error_document" {
+  type        = string
+  description = "Default error document for SPA fallback behavior."
+  default     = "index.html"
+}
+
+variable "backend_allowed_origins" {
+  type        = list(string)
+  description = "List of allowed origins for backend CORS (include CloudFront/custom frontend URL)."
+  default     = []
+}
+
 # ---------- Database Tier ----------
 variable "db_engine" {
   type        = string

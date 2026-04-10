@@ -24,12 +24,20 @@ app_health_check_path = "/health"
 asg_min_size         = 1
 asg_desired_capacity = 1
 asg_max_size         = 2
+asg_target_requests_per_target = 100
 
 # ---------- Load Balancer ----------
 alb_ingress_cidrs = ["0.0.0.0/0"]
 health_check_path = "/health"
 acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/your-real-cert-id"
 enable_http_to_https_redirect = true
+
+# ---------- Presentation Tier ----------
+frontend_domain_name         = null
+frontend_acm_certificate_arn = null
+frontend_index_document      = "index.html"
+frontend_error_document      = "index.html"
+backend_allowed_origins      = ["https://example-frontend-domain.cloudfront.net"]
 
 # ---------- Database Tier ----------
 db_engine              = "mysql"

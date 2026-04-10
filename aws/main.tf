@@ -12,6 +12,9 @@ data "aws_ssm_parameter" "al2_ami_id" {
   name = "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
 }
 
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
 resource "aws_iam_role" "app_ec2" {
   name = "${local.name_prefix}-app-ec2-role"
 
@@ -62,6 +65,7 @@ resource "aws_launch_template" "app" {
     cat >/etc/profile.d/app_env.sh <<'EOF'
     export APP_PORT="${var.app_port}"
     export HEALTH_ENDPOINT="${local.app_health_check_path}"
+    export BACKEND_ALLOWED_ORIGINS="${join(",", var.backend_allowed_origins)}"
     EOF
     chmod 644 /etc/profile.d/app_env.sh
 
@@ -69,6 +73,7 @@ resource "aws_launch_template" "app" {
     cat >/opt/app/app.env <<'EOF'
     APP_PORT=${var.app_port}
     HEALTH_ENDPOINT=${local.app_health_check_path}
+    BACKEND_ALLOWED_ORIGINS=${join(",", var.backend_allowed_origins)}
     EOF
     chmod 600 /opt/app/app.env
 
@@ -177,6 +182,136 @@ resource "aws_lb_listener" "https" {
   }
 }
 
+resource "aws_s3_bucket" "frontend" {
+  bucket = "${local.name_prefix}-frontend-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.name}"
+
+  tags = {
+    Name = "${local.name_prefix}-frontend"
+    Tier = "presentation"
+  }
+}
+
+resource "aws_s3_bucket_ownership_controls" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  block_public_acls       = true
+  ignore_public_acls      = true
+  block_public_policy     = true
+  restrict_public_buckets = true
+}
+
+resource "aws_cloudfront_origin_access_control" "frontend" {
+  name                              = "${local.name_prefix}-frontend-oac"
+  description                       = "OAC for frontend S3 origin access."
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+resource "aws_cloudfront_distribution" "frontend" {
+  enabled             = true
+  is_ipv6_enabled     = true
+  default_root_object = var.frontend_index_document
+
+  aliases = local.frontend_aliases
+
+  origin {
+    domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
+    origin_id                = "s3-frontend-origin"
+    origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
+  }
+
+  default_cache_behavior {
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "s3-frontend-origin"
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+  }
+
+  custom_error_response {
+    error_code            = 403
+    response_code         = 200
+    response_page_path    = "/${var.frontend_error_document}"
+    error_caching_min_ttl = 0
+  }
+
+  custom_error_response {
+    error_code            = 404
+    response_code         = 200
+    response_page_path    = "/${var.frontend_error_document}"
+    error_caching_min_ttl = 0
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  dynamic "viewer_certificate" {
+    for_each = local.use_frontend_acm ? [1] : []
+    content {
+      acm_certificate_arn      = var.frontend_acm_certificate_arn
+      ssl_support_method       = "sni-only"
+      minimum_protocol_version = "TLSv1.2_2021"
+    }
+  }
+
+  dynamic "viewer_certificate" {
+    for_each = local.use_frontend_acm ? [] : [1]
+    content {
+      cloudfront_default_certificate = true
+    }
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-frontend-cdn"
+    Tier = "presentation"
+  }
+}
+
+data "aws_iam_policy_document" "frontend_bucket_policy" {
+  statement {
+    sid    = "AllowCloudFrontReadOnly"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.frontend.arn}/*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = [aws_cloudfront_distribution.frontend.arn]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+  policy = data.aws_iam_policy_document.frontend_bucket_policy.json
+}
+
 resource "aws_autoscaling_group" "app" {
   name             = "${local.name_prefix}-app-asg"
   min_size         = var.asg_min_size
@@ -221,6 +356,8 @@ resource "aws_autoscaling_policy" "app_alb_request_count" {
 
 locals {
   app_health_check_path = var.health_check_path
+  frontend_aliases      = var.frontend_domain_name != null ? [var.frontend_domain_name] : []
+  use_frontend_acm      = var.frontend_domain_name != null && var.frontend_acm_certificate_arn != null
 
   public_subnet_map = {
     for idx, cidr in var.public_subnet_cidrs : idx => {

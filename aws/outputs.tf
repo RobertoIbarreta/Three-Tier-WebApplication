@@ -162,3 +162,33 @@ output "alb_https_endpoint" {
   description = "Convenience HTTPS endpoint URL for the application load balancer."
   value       = "https://${aws_lb.app.dns_name}"
 }
+
+output "frontend_s3_bucket_name" {
+  description = "Name of the S3 bucket used as frontend static origin."
+  value       = aws_s3_bucket.frontend.bucket
+}
+
+output "frontend_s3_bucket_id" {
+  description = "ID of the S3 bucket used as frontend static origin."
+  value       = aws_s3_bucket.frontend.id
+}
+
+output "frontend_cloudfront_distribution_id" {
+  description = "ID of the CloudFront distribution serving the frontend."
+  value       = aws_cloudfront_distribution.frontend.id
+}
+
+output "frontend_cloudfront_domain_name" {
+  description = "CloudFront domain name serving the frontend."
+  value       = aws_cloudfront_distribution.frontend.domain_name
+}
+
+output "frontend_cloudfront_url" {
+  description = "Canonical frontend URL via CloudFront domain."
+  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+}
+
+output "frontend_custom_domain_url" {
+  description = "Canonical frontend URL via custom domain when configured, otherwise null."
+  value       = var.frontend_domain_name != null ? "https://${var.frontend_domain_name}" : null
+}
