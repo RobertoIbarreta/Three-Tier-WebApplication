@@ -29,6 +29,16 @@ locals {
       az   = var.availability_zones[idx]
     }
   }
+
+  # Derive an RDS parameter-group family from engine/version to avoid
+  # environment drift and keep the value centrally computed.
+  db_parameter_group_family = (
+    var.db_engine == "postgres" ?
+    "postgres${split(".", var.db_engine_version)[0]}" :
+    var.db_engine == "mysql" ?
+    "mysql${join(".", slice(split(".", var.db_engine_version), 0, 2))}" :
+    var.db_engine
+  )
 }
 
 resource "aws_subnet" "public" {
@@ -306,6 +316,76 @@ resource "aws_security_group" "db" {
 
   tags = {
     Name = "${local.name_prefix}-db-sg"
+    Tier = "db"
+  }
+}
+
+resource "aws_db_subnet_group" "main" {
+  name        = "${local.name_prefix}-db-subnet-group"
+  description = "DB subnet group spanning private DB subnets."
+  subnet_ids  = values(aws_subnet.private_db)[*].id
+
+  tags = {
+    Name = "${local.name_prefix}-db-subnet-group"
+    Tier = "db"
+  }
+}
+
+resource "aws_db_parameter_group" "main" {
+  name        = "${local.name_prefix}-db-params"
+  family      = local.db_parameter_group_family
+  description = "Parameter group baseline for safe DB tuning over time."
+
+  tags = {
+    Name = "${local.name_prefix}-db-params"
+    Tier = "db"
+  }
+}
+
+resource "aws_kms_key" "rds" {
+  description             = "KMS key for RDS encryption at rest."
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+
+  tags = {
+    Name = "${local.name_prefix}-rds-kms"
+    Tier = "db"
+  }
+}
+
+resource "aws_kms_alias" "rds" {
+  name          = "alias/${local.name_prefix}-rds"
+  target_key_id = aws_kms_key.rds.key_id
+}
+
+resource "aws_db_instance" "main" {
+  identifier = "${local.name_prefix}-db"
+
+  engine         = var.db_engine
+  engine_version = var.db_engine_version
+  instance_class = var.db_instance_class
+
+  allocated_storage           = var.db_allocated_storage
+  db_name                     = var.db_name
+  username                    = var.db_username
+  manage_master_user_password = true
+  port                        = var.db_port
+
+  multi_az                = var.db_multi_az
+  backup_retention_period = var.db_backup_retention
+  maintenance_window      = "Mon:03:00-Mon:04:00"
+
+  publicly_accessible = false
+
+  storage_encrypted = true
+  kms_key_id        = aws_kms_key.rds.arn
+
+  db_subnet_group_name   = aws_db_subnet_group.main.name
+  vpc_security_group_ids = [aws_security_group.db.id]
+  parameter_group_name   = aws_db_parameter_group.main.name
+
+  tags = {
+    Name = "${local.name_prefix}-db"
     Tier = "db"
   }
 }

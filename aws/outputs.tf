@@ -62,3 +62,33 @@ output "private_db_route_table_ids" {
   description = "Private DB route table IDs keyed by subnet/AZ index (no direct IGW route)."
   value       = { for k, v in aws_route_table.private_db : k => v.id }
 }
+
+output "db_instance_id" {
+  description = "RDS DB instance identifier."
+  value       = aws_db_instance.main.id
+}
+
+output "db_endpoint" {
+  description = "RDS DB endpoint with port."
+  value       = aws_db_instance.main.endpoint
+}
+
+output "db_address" {
+  description = "RDS DB endpoint address (hostname only)."
+  value       = aws_db_instance.main.address
+}
+
+output "db_port" {
+  description = "RDS DB endpoint port."
+  value       = aws_db_instance.main.port
+}
+
+output "db_subnet_group_name" {
+  description = "DB subnet group name associated with the RDS instance."
+  value       = aws_db_instance.main.db_subnet_group_name
+}
+
+output "db_publicly_accessible" {
+  description = "Whether the DB instance is publicly accessible."
+  value       = aws_db_instance.main.publicly_accessible
+}

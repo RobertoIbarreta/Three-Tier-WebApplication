@@ -106,6 +106,11 @@ variable "db_engine" {
   description = "RDS engine (e.g. mysql, postgres)."
 }
 
+variable "db_parameter_group_family" {
+  type        = string
+  description = "DB parameter group family matching the selected engine/version (e.g. postgres16, mysql8.0)."
+}
+
 variable "db_engine_version" {
   type        = string
   description = "RDS engine version."
@@ -131,6 +136,12 @@ variable "db_username" {
   description = "Master username for RDS (password via secret, not in tfvars in git)."
 }
 
+variable "db_password" {
+  type        = string
+  description = "Master password for RDS."
+  sensitive   = true
+}
+
 variable "db_port" {
   type        = number
   description = "Database port."
@@ -141,9 +152,19 @@ variable "db_backup_retention" {
   description = "Backup retention period in days."
 }
 
+variable "db_maintenance_window" {
+  type        = string
+  description = "Weekly maintenance window in UTC (e.g. Mon:03:00-Mon:04:00)."
+}
+
 variable "db_multi_az" {
   type        = bool
   description = "Enable Multi-AZ for RDS."
+}
+
+variable "db_skip_final_snapshot" {
+  type        = bool
+  description = "Whether to skip final snapshot when destroying DB (use true for ephemeral envs, false for prod)."
 }
 
 variable "db_publicly_accessible" {

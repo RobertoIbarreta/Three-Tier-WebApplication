@@ -28,11 +28,15 @@ health_check_path = "/health"
 # ---------- Database Tier ----------
 db_engine              = "mysql"
 db_engine_version      = "8.0"
+db_parameter_group_family = "mysql8.0"
 db_instance_class      = "db.t3.small"
 db_allocated_storage   = 20
 db_name                = "appdb"
 db_username            = "app_user"
+# db_password          = "replace-with-secure-secret" # Only needed if not using managed master password
 db_port                = 3306
 db_backup_retention    = 3
+db_maintenance_window  = "Tue:03:00-Tue:04:00"
+db_skip_final_snapshot = false
 db_multi_az            = true
 db_publicly_accessible = false
