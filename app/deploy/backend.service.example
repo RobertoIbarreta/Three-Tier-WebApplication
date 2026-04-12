@@ -1,0 +1,15 @@
+[Unit]
+Description=Three-tier Go API
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/app
+EnvironmentFile=/opt/app/app.env
+ExecStart=/opt/app/server
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+backend/server
+backend/server.exe
+node_modules/
+dist/
+.env
+.env.local

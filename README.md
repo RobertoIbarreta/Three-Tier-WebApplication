@@ -11,8 +11,9 @@ Infrastructure-as-code for a **three-tier** web application on **AWS** (primary 
 | **AWS bootstrap** (`aws/bootstrap/`) | Dedicated stack that creates **S3** (remote state) + **DynamoDB** (state locking) |
 | **AWS modules** (`aws/modules/`) | Placeholder folders: `network`, `security`, `app`, `db` (to be implemented) |
 | **GCP** (`gcp/`) | Example `prod.tfvars.example` only; no full Terraform root yet |
+| **Sample app** (`app/`) | React (Vite) UI, Go API, MySQL `schema.sql`—deploy steps in [`app/README.md`](app/README.md) |
 
-Application resources (VPC, ALB, ASG, RDS, and so on) are **not** defined yet in the main `aws/` stack; this repo documents the **foundation** you built so far.
+The **`aws/`** stack defines VPC, ALB, ASG, RDS, CloudFront, and related services. Use **`app/`** to build the UI and API, then install artifacts on AWS as described in `app/README.md`.
 
 ## Repository Layout
 
@@ -21,6 +22,8 @@ Three-Tier-WebApplication/
 ├── README.md                 # This file
 ├── .gitignore                # Terraform state, .terraform/, *.tfvars (examples allowed)
 ├── docs/                     # Extra documentation (see docs/README.md)
+├── app/                      # Sample React + Go + SQL app (deploy onto aws/)
+│   ├── deploy/windows/       # PowerShell: build & publish scripts
 ├── aws/                      # Main AWS Terraform root
 │   ├── main.tf               # Compose modules here
 │   ├── versions.tf
@@ -68,6 +71,12 @@ The AWS root module sets `manage_master_user_password = true` on [`aws_db_instan
 - [Terraform](https://www.terraform.io/downloads) `>= 1.5.0`
 - [AWS CLI](https://aws.amazon.com/cli/) configured with credentials for the target account
 - An AWS account (and a **globally unique** S3 bucket name for bootstrap)
+
+To **build and publish the sample app** from Windows you also need:
+
+- [Go 1.22+](https://go.dev/dl/) (backend)
+- [Node.js LTS](https://nodejs.org/) / `npm` (frontend)
+- Optional: **MySQL/MariaDB client** (`mysql` on PATH) if you run [`Apply-DatabaseSchema.ps1`](app/deploy/windows/Apply-DatabaseSchema.ps1) from your PC (RDS is private; see below)
 
 ## AWS: Bootstrap (Remote State Backend)
 
@@ -125,7 +134,109 @@ terraform plan -var-file=environments/prod/prod.tfvars
 
 Copy each `*.tfvars.example` to a matching `*.tfvars` in the same folder and set `owner` and other values locally.
 
-The main module still has **no application resources** in `main.tf` yet; remote state is ready for when you add them.
+## Deploying the sample app (database, backend, frontend)
+
+The sample UI and API live under [`app/`](app/). Terraform provisions **RDS MySQL**, **ALB + ASG** (API on `app_port`, default **8080**), **S3 + CloudFront** (static site), and writes **`/opt/app/app.env`** on new instances (`APP_PORT`, `HEALTH_ENDPOINT`, `BACKEND_ALLOWED_ORIGINS`). You still **ship the binary**, **apply SQL**, and **upload static files**.
+
+### 0. Apply infrastructure and capture outputs
+
+From `aws/` (same workspace you will use for outputs):
+
+```powershell
+cd aws
+terraform apply -var-file=environments\dev\dev.tfvars
+terraform output -raw alb_https_endpoint
+terraform output -raw frontend_cloudfront_url
+terraform output -raw frontend_s3_bucket_name
+terraform output -raw frontend_cloudfront_distribution_id
+terraform output -raw db_master_user_secret_arn
+```
+
+Set **`backend_allowed_origins`** in your `*.tfvars` to your **CloudFront URL** (e.g. `https://d111111abcdef8.cloudfront.net`) so the Go API allows browser `Origin` headers. Include `http://localhost:5173` only if you call the API from the browser during local UI dev without the Vite proxy. Re-apply after changing it.
+
+### 1. Database (`app/database/schema.sql`)
+
+Creates the `items` table and seed rows. **RDS has no public endpoint** in the default stack, so choose one approach:
+
+- **From your PC:** temporarily allow your IP on the **RDS security group** (or use a VPN into the VPC), ensure **`mysql`** and **AWS CLI** work, then run:
+
+  ```powershell
+  cd <repo-root>
+  .\app\deploy\windows\Apply-DatabaseSchema.ps1
+  ```
+
+  The script reads `db_master_user_secret_arn` via `terraform output` and loads credentials from Secrets Manager.
+
+- **From an app EC2 instance:** open **Session Manager**, install `mysql` if needed (`sudo yum install -y mariadb1011-client` or similar), upload `app/database/schema.sql`, then:
+
+  ```bash
+  mysql -h <rds_address> -u <user> -p <dbname> < schema.sql
+  ```
+
+  Use the master user and password from the RDS secret in Secrets Manager if you are not using IAM DB auth.
+
+### 2. Backend (Go on EC2)
+
+1. Build a **Linux amd64** binary on Windows:
+
+   ```powershell
+   cd <repo-root>
+   .\app\deploy\windows\Build-Backend.ps1
+   ```
+
+   This writes `app\backend\server` (no extension).
+
+2. Copy **`server`** to **`/opt/app/server`** on **each** instance (ASG may replace instances—automate with Golden AMI, CI, or S3 + user-data later).
+
+   Practical options: **Session Manager** file transfer, **`aws s3 cp`** to a bucket your instance role can read (add IAM if you introduce a “releases” bucket), or **SCP** if you use key-based SSH.
+
+3. On the instance, append **`DB_SECRET_ARN`** to **`/opt/app/app.env`** (value = `terraform output -raw db_master_user_secret_arn`). The instance role already has **`secretsmanager:GetSecretValue`** for that ARN ([`aws/secrets_iam.tf`](aws/secrets_iam.tf)).
+
+4. Install the systemd unit and start the API:
+
+   ```bash
+   sudo cp /path/to/backend.service.example /etc/systemd/system/backend.service
+   # Edit if needed: WorkingDirectory=/opt/app, EnvironmentFile=/opt/app/app.env, ExecStart=/opt/app/server
+   sudo chmod +x /opt/app/server
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now backend.service
+   ```
+
+   Template: [`app/deploy/backend.service.example`](app/deploy/backend.service.example).
+
+5. Confirm the target group sees **healthy** targets: **`GET https://<alb-dns>/health`** should return `200` and body `ok`.
+
+### 3. Frontend (React → S3 + CloudFront)
+
+1. Build with the **public API base URL** (ALB HTTPS, no trailing slash):
+
+   ```powershell
+   cd <repo-root>
+   .\app\deploy\windows\Build-Frontend.ps1 -ApiBaseUrl "https://<your-alb-dns>.<region>.elb.amazonaws.com"
+   ```
+
+2. Upload **`app/frontend/dist`** and invalidate CloudFront (reads bucket and distribution ID from **terraform output** in `aws/`):
+
+   ```powershell
+   .\app\deploy\windows\Publish-Frontend.ps1
+   ```
+
+   Or pass values explicitly: `.\Publish-Frontend.ps1 -Bucket "..." -DistributionId "E..." -Region "us-east-1"`.
+
+3. Open **`terraform output -raw frontend_cloudfront_url`** (or your custom domain if configured).
+
+### PowerShell scripts (summary)
+
+| Script | Purpose |
+|--------|---------|
+| [`app/deploy/windows/Apply-DatabaseSchema.ps1`](app/deploy/windows/Apply-DatabaseSchema.ps1) | Apply `schema.sql` using Secrets Manager + `mysql` (needs network path to RDS). |
+| [`app/deploy/windows/Build-Backend.ps1`](app/deploy/windows/Build-Backend.ps1) | Cross-compile Go API to `app/backend/server` for Linux. |
+| [`app/deploy/windows/Build-Frontend.ps1`](app/deploy/windows/Build-Frontend.ps1) | `npm run build` with `-ApiBaseUrl` → `app/frontend/dist`. |
+| [`app/deploy/windows/Publish-Frontend.ps1`](app/deploy/windows/Publish-Frontend.ps1) | `aws s3 sync` + CloudFront invalidation `/*`. |
+
+All scripts assume the repository layout is intact and you run them from any directory (they resolve paths from `$PSScriptRoot`). Terraform commands run in **`aws/`** using your **current backend and workspace**.
+
+More detail and local dev: [`app/README.md`](app/README.md).
 
 ## Scaffold Validation Status
 
@@ -155,9 +266,9 @@ The `gcp/` directory currently holds **example variable values** only. A full Te
 
 ## Roadmap (Typical Next Steps)
 
-1. Implement `aws/modules/network` (VPC, subnets, routing, NAT).
-2. Add security groups, RDS, app tier (launch template + ASG), ALB, and outputs.
-3. Wire CI/CD to run `terraform plan` per environment with the matching `backend.hcl` and `*.tfvars`.
+1. Harden app delivery: bake the Go binary into an AMI or pull from S3 in **user-data**, add health checks and rollouts.
+2. Automate **`backend_allowed_origins`** and **`VITE_API_URL`** per environment (fixed ALB DNS or Route53 `api_dns_name`).
+3. Wire CI/CD: `terraform plan` / `apply`, then `Build-*` / `Publish-Frontend.ps1` (or Linux equivalents) with OIDC or deployment roles.
 
 ## License
 
