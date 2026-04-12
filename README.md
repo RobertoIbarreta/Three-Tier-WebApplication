@@ -56,6 +56,13 @@ Three-Tier-WebApplication/
 - **Do commit** `*.tfvars.example` and `backend.hcl.example` as templates.
 - Keep **`.terraform.lock.hcl`** committed for reproducible provider versions (under `aws/` and `aws/bootstrap/`).
 
+### RDS master credentials (Secrets Manager)
+
+The AWS root module sets `manage_master_user_password = true` on [`aws_db_instance.main`](aws/main.tf). RDS creates and rotates the master password in **AWS Secrets Manager**; Terraform **must not** copy that password into SSM Parameter Store (avoids drift and fights rotation).
+
+- **Operators:** after apply, read the sensitive output `db_master_user_secret_arn` from [`aws/outputs.tf`](aws/outputs.tf) (e.g. `terraform output -raw db_master_user_secret_arn`).
+- **App tier (EC2):** the application instance role [`aws_iam_role.app_ec2`](aws/main.tf) includes an inline policy ([`aws/secrets_iam.tf`](aws/secrets_iam.tf)) allowing `secretsmanager:GetSecretValue` on **that secret ARN only** and `kms:Decrypt` on the secret’s CMK with `kms:ViaService` scoped to Secrets Manager. At runtime the app should call `GetSecretValue`, parse the **JSON** secret string, and use the fields AWS documents for RDS master secrets (including **host**, **port**, **username**, **password**, and DB identifier fields as provided). Wiring that into application code is outside this repo unless you add it explicitly.
+
 ## Prerequisites
 
 - [Terraform](https://www.terraform.io/downloads) `>= 1.5.0`

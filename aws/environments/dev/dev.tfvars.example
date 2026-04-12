@@ -14,6 +14,10 @@ private_app_subnets  = ["10.10.11.0/24", "10.10.12.0/24"]
 private_db_subnets   = ["10.10.21.0/24", "10.10.22.0/24"]
 availability_zones   = ["us-east-1a", "us-east-1b"]
 
+# ---------- SSM Session Manager ----------
+# NAT is enough for Session Manager; set true only if you want private API endpoints (extra cost).
+enable_ssm_vpc_endpoints = false
+
 # ---------- Compute / App Tier ----------
 instance_type        = "t3.micro"
 app_port             = 8080
@@ -31,6 +35,18 @@ alb_ingress_cidrs = ["0.0.0.0/0"]
 health_check_path = "/health"
 acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/your-real-cert-id"
 enable_http_to_https_redirect = true
+enable_waf                    = false
+
+# ---------- AWS Backup (optional; RDS + optional S3 / cross-region) ----------
+enable_aws_backup                 = false
+# enable_backup_cross_region_copy = true
+# backup_dr_region                = "us-west-2"
+# enable_backup_s3_frontend       = true
+
+# ---------- Route53 (existing public hosted zone) ----------
+# route53_zone_id = "Z1234567890ABC" # public zone ID (same account/region as stack)
+# api_dns_name    = "api.example.com" # alias A -> ALB; cert must cover this name
+# Frontend uses frontend_domain_name below for both CloudFront aliases and Route53 A/AAAA when zone is set.
 
 # ---------- Presentation Tier ----------
 frontend_domain_name         = null
@@ -54,3 +70,15 @@ db_maintenance_window  = "Mon:03:00-Mon:04:00"
 db_skip_final_snapshot = true
 db_multi_az            = false
 db_publicly_accessible = false
+
+# ---------- Observability (mute or loosen in dev) ----------
+enable_alb_access_logs         = false
+alb_access_logs_s3_prefix      = "alb"
+enable_cloudwatch_alb_alarms   = false
+enable_cloudwatch_rds_alarms   = false
+# cloudwatch_alarm_sns_topic_arns = ["arn:aws:sns:us-east-1:123456789012:your-topic"]
+# cloudwatch_alarm_alb_5xx_threshold = 50
+# cloudwatch_alarm_rds_cpu_threshold_percent = 90
+# cloudwatch_alarm_rds_free_storage_min_gib = 1
+# cloudwatch_alarm_rds_database_connections_threshold = 40
+# cloudwatch_alarm_alb_target_response_time_enabled = true

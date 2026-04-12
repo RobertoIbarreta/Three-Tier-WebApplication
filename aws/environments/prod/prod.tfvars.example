@@ -14,6 +14,9 @@ private_app_subnets  = ["10.30.11.0/24", "10.30.12.0/24"]
 private_db_subnets   = ["10.30.21.0/24", "10.30.22.0/24"]
 availability_zones   = ["us-east-1a", "us-east-1b"]
 
+# ---------- SSM Session Manager ----------
+enable_ssm_vpc_endpoints = false
+
 # ---------- Compute / App Tier ----------
 instance_type        = "t3.micro"
 app_port             = 8080
@@ -31,6 +34,12 @@ alb_ingress_cidrs = ["0.0.0.0/0"]
 health_check_path = "/health"
 acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/your-real-cert-id"
 enable_http_to_https_redirect = true
+# enable_waf defaults to true (regional WAF on ALB).
+# enable_aws_backup defaults to true. For DR copies: enable_backup_cross_region_copy + backup_dr_region.
+
+# ---------- Route53 (existing public hosted zone) ----------
+# route53_zone_id = "Z1234567890ABC"
+# api_dns_name    = "api.example.com"
 
 # ---------- Presentation Tier ----------
 frontend_domain_name         = null
@@ -54,3 +63,9 @@ db_maintenance_window  = "Sun:04:00-Sun:05:00"
 db_skip_final_snapshot = false
 db_multi_az            = true
 db_publicly_accessible = false
+
+# ---------- Observability ----------
+# Point alarms at SNS for paging; tighten thresholds from defaults as needed.
+# cloudwatch_alarm_sns_topic_arns = ["arn:aws:sns:us-east-1:123456789012:prod-alarms"]
+# cloudwatch_alarm_rds_free_storage_min_gib = 5
+# cloudwatch_alarm_rds_database_connections_threshold = 100

@@ -15,6 +15,12 @@ data "aws_ssm_parameter" "al2_ami_id" {
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
+# App instances use SSM Session Manager (no bastion). Operators connect from the console:
+# EC2 -> Instances -> select instance -> Connect -> Session Manager.
+# Prerequisites: instance is running, SSM agent present on the AMI (Amazon Linux 2 has it),
+# and outbound connectivity to SSM APIs. This VPC uses NAT in private app subnets for that
+# path. Optional interface VPC endpoints (see var.enable_ssm_vpc_endpoints) remove the need
+# to reach public SSM endpoints over the internet for a higher isolation posture.
 resource "aws_iam_role" "app_ec2" {
   name = "${local.name_prefix}-app-ec2-role"
 
@@ -37,6 +43,7 @@ resource "aws_iam_role" "app_ec2" {
   }
 }
 
+# Managed policy: SSM messaging, EC2 messages, and related APIs for Session Manager.
 resource "aws_iam_role_policy_attachment" "app_ec2_ssm_core" {
   role       = aws_iam_role.app_ec2.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
@@ -113,9 +120,20 @@ resource "aws_lb" "app" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = values(aws_subnet.public)[*].id
 
+  dynamic "access_logs" {
+    for_each = var.enable_alb_access_logs ? [1] : []
+    content {
+      bucket  = aws_s3_bucket.alb_access_logs[0].bucket
+      prefix  = var.alb_access_logs_s3_prefix
+      enabled = true
+    }
+  }
+
   tags = {
     Name = "${local.name_prefix}-alb"
     Tier = "public"
+    # Ensures the ALB is created/updated after the access-log bucket policy (ELB delivery requirement).
+    AlbAccessLogsPolicySig = md5(join("", aws_s3_bucket_policy.alb_access_logs[*].id))
   }
 }
 
@@ -206,6 +224,31 @@ resource "aws_s3_bucket_public_access_block" "frontend" {
   ignore_public_acls      = true
   block_public_policy     = true
   restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  rule {
+    id     = "expire-noncurrent-frontend-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = var.frontend_noncurrent_version_expiration_days
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.frontend]
 }
 
 resource "aws_cloudfront_origin_access_control" "frontend" {
@@ -628,6 +671,53 @@ resource "aws_security_group" "app" {
 
   tags = {
     Name = "${local.name_prefix}-app-sg"
+    Tier = "app"
+  }
+}
+
+# Optional: keep Session Manager traffic inside the VPC (no public SSM API endpoint via NAT).
+# Endpoint security group allows HTTPS from the app tier only.
+resource "aws_security_group" "ssm_vpc_endpoints" {
+  count = var.enable_ssm_vpc_endpoints ? 1 : 0
+
+  name        = "${local.name_prefix}-ssm-vpce-sg"
+  description = "Interface VPC endpoints for SSM Session Manager; ingress 443 from app tier only."
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "HTTPS from app instances to SSM-related VPC endpoints"
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app.id]
+  }
+
+  egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-ssm-vpce-sg"
+    Tier = "app"
+  }
+}
+
+resource "aws_vpc_endpoint" "ssm" {
+  for_each = var.enable_ssm_vpc_endpoints ? toset(["ssm", "ssmmessages", "ec2messages"]) : toset([])
+
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.${each.key}"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = values(aws_subnet.private_app)[*].id
+  security_group_ids  = [aws_security_group.ssm_vpc_endpoints[0].id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${local.name_prefix}-vpce-${each.key}"
     Tier = "app"
   }
 }

@@ -11,4 +11,21 @@ locals {
     ManagedBy   = "Terraform"
     Owner       = var.owner
   }
+
+  # CloudWatch FreeStorageSpace is in bytes; variable is GiB for operator-friendly thresholds.
+  rds_free_storage_alarm_threshold_bytes = floor(var.cloudwatch_alarm_rds_free_storage_min_gib * 1073741824)
+
+  route53_zone_configured = var.route53_zone_id != null && var.route53_zone_id != ""
+
+  route53_api_record_enabled = (
+    local.route53_zone_configured &&
+    var.api_dns_name != null &&
+    var.api_dns_name != ""
+  )
+
+  route53_frontend_records_enabled = (
+    local.route53_zone_configured &&
+    var.frontend_domain_name != null &&
+    var.frontend_domain_name != ""
+  )
 }

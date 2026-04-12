@@ -93,6 +93,12 @@ output "db_publicly_accessible" {
   value       = aws_db_instance.main.publicly_accessible
 }
 
+output "db_master_user_secret_arn" {
+  description = "Secrets Manager ARN for the RDS-managed master user secret (requires manage_master_user_password = true). Use for operators and app bootstrap; app EC2 role can read via IAM policy in secrets_iam.tf."
+  value       = aws_db_instance.main.master_user_secret[0].secret_arn
+  sensitive   = true
+}
+
 output "app_ec2_role_name" {
   description = "IAM role name used by app EC2 instances."
   value       = aws_iam_role.app_ec2.name
@@ -136,6 +142,21 @@ output "alb_dns_name" {
 output "alb_arn" {
   description = "ARN of the application load balancer."
   value       = aws_lb.app.arn
+}
+
+output "wafv2_web_acl_arn" {
+  description = "Regional WAFv2 web ACL ARN when enable_waf is true; otherwise null."
+  value       = var.enable_waf ? aws_wafv2_web_acl.alb[0].arn : null
+}
+
+output "wafv2_web_acl_id" {
+  description = "Regional WAFv2 web ACL ID when enable_waf is true; otherwise null."
+  value       = var.enable_waf ? aws_wafv2_web_acl.alb[0].id : null
+}
+
+output "alb_access_logs_bucket_name" {
+  description = "S3 bucket name for ALB access logs when enable_alb_access_logs is true; otherwise null."
+  value       = var.enable_alb_access_logs ? aws_s3_bucket.alb_access_logs[0].bucket : null
 }
 
 output "app_target_group_arn" {
@@ -189,6 +210,36 @@ output "frontend_cloudfront_url" {
 }
 
 output "frontend_custom_domain_url" {
-  description = "Canonical frontend URL via custom domain when configured, otherwise null."
+  description = "Intended frontend URL when frontend_domain_name is set (https). Does not imply Route53 exists; see route53_frontend_https_url when records are managed here."
   value       = var.frontend_domain_name != null ? "https://${var.frontend_domain_name}" : null
+}
+
+output "route53_api_https_url" {
+  description = "https URL for the API when Route53 alias to the ALB is managed (route53_zone_id + api_dns_name); otherwise null."
+  value       = local.route53_api_record_enabled ? "https://${var.api_dns_name}" : null
+}
+
+output "route53_frontend_https_url" {
+  description = "https URL for the frontend when Route53 aliases to CloudFront are managed (route53_zone_id + frontend_domain_name); otherwise null."
+  value       = local.route53_frontend_records_enabled ? "https://${var.frontend_domain_name}" : null
+}
+
+output "backup_vault_arn" {
+  description = "Primary AWS Backup vault ARN when enable_aws_backup is true; otherwise null."
+  value       = var.enable_aws_backup ? aws_backup_vault.main[0].arn : null
+}
+
+output "backup_vault_dr_arn" {
+  description = "DR-region backup vault ARN when cross-region copy is enabled; otherwise null."
+  value       = var.enable_aws_backup && var.enable_backup_cross_region_copy ? aws_backup_vault.dr[0].arn : null
+}
+
+output "backup_plan_id" {
+  description = "AWS Backup plan ID when enable_aws_backup is true; otherwise null."
+  value       = var.enable_aws_backup ? aws_backup_plan.main[0].id : null
+}
+
+output "backup_selection_id" {
+  description = "AWS Backup selection ID when enable_aws_backup is true; otherwise null."
+  value       = var.enable_aws_backup ? aws_backup_selection.main[0].id : null
 }
