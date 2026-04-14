@@ -15,6 +15,137 @@ Infrastructure-as-code for a **three-tier** web application on **AWS** (primary 
 
 The **`aws/`** stack defines VPC, ALB, ASG, RDS, CloudFront, and related services. Use **`app/`** to build the UI and API, then install artifacts on AWS as described in `app/README.md`.
 
+## AWS Infrastructure (Full 3-Tier Description)
+
+This stack provisions a production-style **3-tier web architecture** on AWS:
+
+- **Presentation tier:** CloudFront + private S3 origin for static frontend hosting
+- **Application tier:** Public ALB + private EC2 Auto Scaling Group
+- **Data tier:** Private RDS in dedicated DB subnets
+- **Cross-cutting controls:** IAM least-privilege, optional WAF, backup, monitoring, and optional Route53 aliases
+
+### 1) Network and Subnet Topology
+
+The stack creates a dedicated VPC with DNS support and DNS hostnames enabled, plus three subnet tiers across configured AZs:
+
+- **Public subnets**
+  - Host the Application Load Balancer
+  - Route `0.0.0.0/0` to an Internet Gateway
+  - Host one NAT Gateway per public subnet/AZ for app-tier egress
+- **Private app subnets**
+  - Host EC2 app instances (no public IPs)
+  - Route outbound traffic through NAT Gateways
+  - Optionally host interface endpoints for `ssm`, `ssmmessages`, and `ec2messages`
+- **Private DB subnets**
+  - Used by the RDS DB subnet group
+  - Isolated from direct internet ingress
+
+### 2) Security Model
+
+Security is enforced with SG boundaries and IAM:
+
+- **ALB SG:** allows inbound `80/443` from internet (IPv4 and optional IPv6)
+- **App SG:** allows inbound app port traffic only from ALB SG
+- **DB SG:** allows inbound DB port traffic only from App SG
+- **EC2 IAM role:** includes Session Manager access and scoped Secrets Manager/KMS permissions for the RDS master secret
+
+This design keeps only the load-balancing entrypoint internet-facing while application and data tiers remain private.
+
+### 3) Application Tier (Compute + Load Balancing)
+
+- **Launch template**
+  - Uses latest Amazon Linux 2 AMI from SSM public parameters
+  - Attaches app instance profile and app SG
+  - Writes `/opt/app/app.env` with `APP_PORT`, `HEALTH_ENDPOINT`, and `BACKEND_ALLOWED_ORIGINS`
+- **Auto Scaling Group**
+  - Spans private app subnets
+  - Uses configurable `min/desired/max` capacity
+  - Registers instances in ALB target group and uses ELB health checks
+- **ALB listeners**
+  - HTTP listener can redirect to HTTPS (`enable_http_to_https_redirect`) or forward directly
+  - HTTPS listener terminates TLS with ACM certificate (`acm_certificate_arn`)
+- **Scaling policy**
+  - Target tracking on `ALBRequestCountPerTarget`
+
+### 4) Presentation Tier (S3 + CloudFront)
+
+- **Frontend S3 bucket**
+  - Private, versioned, and locked down with block public access
+  - Ownership mode `BucketOwnerEnforced`
+  - Lifecycle policy to expire noncurrent versions after a configurable number of days
+- **CloudFront distribution**
+  - Uses Origin Access Control (OAC) with SigV4 for private S3 access
+  - Redirects viewers to HTTPS
+  - Supports SPA fallback by mapping `403/404` to `index.html` (configurable error document)
+  - Supports optional custom domain with ACM cert in `us-east-1`
+- **Bucket policy**
+  - Grants `s3:GetObject` only to the specific CloudFront distribution ARN
+
+### 5) Data Tier (RDS)
+
+- **RDS deployment**
+  - Provisioned in private DB subnets using DB subnet group
+  - Not publicly accessible
+  - Engine/version/class/storage are variable-driven
+  - Optional Multi-AZ and backup retention controls
+- **Encryption**
+  - Dedicated KMS key and alias for RDS at-rest encryption
+- **Credentials**
+  - `manage_master_user_password = true`
+  - RDS manages master password in Secrets Manager
+  - Sensitive secret ARN is output as `db_master_user_secret_arn`
+  - App EC2 role can read only that secret and decrypt with constrained KMS permissions
+
+### 6) WAF (Optional)
+
+When `enable_waf = true`, a regional WAFv2 Web ACL is attached to the ALB with AWS managed rule groups:
+
+- `AWSManagedRulesCommonRuleSet`
+- `AWSManagedRulesKnownBadInputsRuleSet`
+- `AWSManagedRulesSQLiRuleSet`
+
+Optional overrides let selected managed rules run in `COUNT` mode for tuning.
+
+### 7) Monitoring and Logging
+
+- **ALB access logs (optional):**
+  - Dedicated S3 bucket with SSE-S3 encryption, public access block, and lifecycle retention
+  - Correct bucket policy for ELB log delivery principals
+- **CloudWatch alarms (optional and configurable):**
+  - ALB unhealthy hosts
+  - ALB target `5xx` responses
+  - ALB target response time
+  - RDS CPU utilization
+  - RDS free storage space
+  - RDS database connections
+- **SNS integration:** alarm and OK actions can be routed to configured SNS topic ARNs
+
+### 8) Backup and DR (Optional)
+
+When `enable_aws_backup = true`, the stack creates:
+
+- Primary backup vault
+- Backup IAM role + managed policy attachments
+- Daily backup plan and lifecycle retention
+- Backup selection for RDS (and optionally frontend S3)
+
+When `enable_backup_cross_region_copy = true`, recovery points are copied to a DR-region vault using the provider alias `aws.dr`.
+
+### 9) Route53 Integration (Optional)
+
+If `route53_zone_id` is supplied:
+
+- `api_dns_name` creates an alias `A` record to the ALB
+- `frontend_domain_name` creates alias `A/AAAA` records to CloudFront
+
+This expects an existing public hosted zone and manages alias records only.
+
+### 10) Naming, Tags, and Outputs
+
+- **Naming convention:** `<project>-<environment>-<component>`
+- **Default tags:** `Project`, `Environment`, `ManagedBy=Terraform`, `Owner`
+- **Useful outputs include:** VPC/subnet IDs, ALB endpoint, ASG/LT IDs, CloudFront URL, frontend bucket name, DB endpoint, and optional WAF/backup/Route53 outputs
+
 ## Repository Layout
 
 ```text
